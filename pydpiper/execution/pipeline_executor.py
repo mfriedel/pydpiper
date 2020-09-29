@@ -17,7 +17,7 @@ import socket
 import signal
 import threading
 os.environ["PYRO_LOGLEVEL"] = os.getenv("PYRO_LOGLEVEL", "INFO")
-import Pyro4       # type: ignore
+from Pyro5.compatibility import Pyro4       # type: ignore
 from typing import Any
 
 if os.getenv("OMP_NUM_THREADS") is None:  # for #378 (very large vmem usage)
@@ -61,7 +61,7 @@ def launchExecutor(executor):
     # but uses a hack to attempt to avoid returning localhost (127....)
     network_address = Pyro4.socketutil.getIpAddress(socket.gethostname(),
                                                     workaround127 = True, ipVersion = 4)
-    daemon = Pyro4.core.Daemon(host=network_address)
+    daemon = Pyro4.Daemon(host=network_address)
     clientURI = daemon.register(executor)
 
     # find the URI of the server:

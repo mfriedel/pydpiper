@@ -39,7 +39,7 @@ logger.basicConfig(filename="pipeline.log", level=os.getenv("PYDPIPER_LOGLEVEL",
                    format="[%(asctime)s.%(msecs)03d,"
                           +__name__+",%(levelname)s] %(message)s")  # type: ignore
                 
-import Pyro4  # type: ignore
+from Pyro5.compatibility import Pyro4  # type: ignore
 from . import pipeline_executor as pe
 from pydpiper.execution.queueing import create_uri_filename_from_options
 
@@ -999,7 +999,7 @@ def launchServer(pipeline):
     # but uses a hack to attempt to avoid returning localhost (127....)
     network_address = Pyro4.socketutil.getIpAddress(socket.gethostname(),
                                                     workaround127 = True, ipVersion = 4)
-    daemon = Pyro4.core.Daemon(host=network_address)
+    daemon = Pyro4.Daemon(host=network_address)
     pipelineURI = daemon.register(pipeline)
     
     if options.execution.use_ns:
@@ -1010,7 +1010,7 @@ def launchServer(pipeline):
     else:
         # If not using Pyro NameServer, must write uri to file for reading by client.
         uf = open(options.execution.urifile, 'w')
-        uf.write(pipelineURI.asString())
+        uf.write(str(pipelineURI))
         uf.close()
     
     pipeline.setVerbosity(options.application.verbose)

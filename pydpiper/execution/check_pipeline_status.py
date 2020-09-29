@@ -9,7 +9,7 @@ Path.ls = lambda x: list(x.iterdir())
 
 signal.signal(signal.SIGPIPE, signal.SIG_DFL)
 
-import Pyro4
+from Pyro5.compatibility import Pyro4
 
 """ check the status of a pydpiper pipeline by querying the server using its uri"""
 

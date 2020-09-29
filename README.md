@@ -11,12 +11,12 @@ For instructions on installing Pydpiper and optionally configuring it for your H
 
 You can also use environment variables to override our configuration defaults for the underlying Pyro library, except for
 `$PYRO_SERVERTYPE` and `$PYRO_LOGFILE`; in particular, you may wish to change `$PYRO_LOGLEVEL`, since this also controls
-the verbosity of some of the application's own logging.  See [the Pyro4 documentation](http://pythonhosted.org//Pyro4/) for more options.
+the verbosity of some of the application's own logging.  See [the Pyro5 documentation](https://pyro5.readthedocs.io) for more options.
 
 Application modules that utilize the pipeline class definitions are currently in applications folder. These applications may be moved to a separate repository at a later date.
  
 *** *** ***
-When your pipeline is running, you can verify the state of your pipeline using the following tool (as of version 1.8):
+When your pipeline is running, you can verify the state of your pipeline using the following tool:
 
 check_pipeline_status.py uri
 
