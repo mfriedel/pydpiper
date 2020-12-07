@@ -465,31 +465,90 @@ def maget(imgs : List[MincAtom], options, prefix, output_dir, build_model_xfms=N
         #       This _can_ allow the overall computation to finish more rapidly
         #       (depending on the relative speed of the two alignment methods/parameters,
         #       number of atlases and other templates used, number of cores available, etc.).
-        atlas_labelled_imgs = (
+        all_transforms = (
             pd.DataFrame({ 'img'        : img,
-                           'label_file' : s.defer(  # can't use `label` in a pd.DataFrame index!
-                              mincresample_new(img=atlas.labels,
-                                               xfm=s.defer(lsq12_nlin(source=img,
-                                                                      target=atlas,
-                                                                      nlin_module=nlin_component,
-                                                                      lsq12_conf=lsq12_conf,
-                                                                      nlin_options=options.maget.nlin.nlin_protocol,
-                                                                      resolution=resolution,
-                                                                      #nlin_conf=nlin_hierarchy,
-                                                                      resample_source=False)).xfm,
-                                               like=img,
-                                               invert=True,
-                                               interpolation=Interpolation.nearest_neighbour,
-                                               extra_flags=('-keep_real_range', '-labels')))}
+                           'atlas'      : atlas,
+                           'xfm'  : s.defer(lsq12_nlin(source=img,
+                                                       target=atlas,
+                                                       nlin_module=nlin_component,
+                                                       lsq12_conf=lsq12_conf,
+                                                       nlin_options=options.maget.nlin.nlin_protocol,
+                                                       resolution=resolution,
+                                                       #nlin_conf=nlin_hierarchy,
+                                                       resample_source=False)) }
                          for img in imgs for atlas in atlases)
         )
 
-        if maget_options.pairwise:
+        atlas_labelled_imgs = (
+            all_transforms.assign(label_file = lambda df: df.apply(axis=1, func=lambda row:
+                                         s.defer(mincresample_new(img=row.atlas.labels,
+                                                                  xfm=row.xfm.xfm,
+                                                                  like=row.img,
+                                                                  invert=True,
+                                                                  interpolation=Interpolation.nearest_neighbour,
+                                                                  extra_flags=('-keep_real_range', '-labels')))))[['img', 'label_file']]
+            # the [['img', 'label_file']] here is just because I'm unsure what adding the extra columns would do ...
+        )
 
-            def choose_new_templates(ts, n):
-                # currently silly, but we might implement a smarter method ...
-                # FIXME what if there aren't enough other imgs around?!  This silently goes weird ...
-                return pd.Series(ts[:n+1])  # n+1 instead of n: choose one more since we won't use image as its own template ...
+        def choose_new_templates(ts, n):
+            # currently silly, but we might implement a smarter method ...
+            # FIXME what if there aren't enough other imgs around?!  This silently goes weird ...
+            return pd.Series(
+                ts[:n + 1])  # n+1 instead of n: choose one more since we won't use image as its own template ...
+
+        if maget_options.pairwise and maget_options.pseudopairwise:
+            warnings.warn("both --pairwise and --pseudopairwise are set; arbitrarily using pairwise")
+
+        if maget_options.pseudopairwise:
+            templates = pd.DataFrame({ 'template' : choose_new_templates(ts=imgs,  # is this `n` correct?
+                                                                         n=maget_options.max_templates - len(atlases))})
+
+            # TODO redundant with above-computed transformations
+            atlas_to_template_registrations = (pd.DataFrame(
+                 { 'atlas' : atlas,
+                   'template' : template}
+                 for atlas in atlases for template in templates.template)
+                .assign(xfm_to_template = lambda df: df.apply(axis=1, func = lambda row: s.defer(
+                          lsq12_nlin(source = row.atlas,
+                                     target = row.template,
+                                     lsq12_conf=lsq12_conf,
+                                     resolution=resolution,
+                                     nlin_module=nlin_component,
+                                     nlin_options=options.maget.nlin.nlin_protocol,
+                                     # needed because we can't initialize affine template->subject registration
+                                     # from a nonlinear transform; see below
+                                     resample_source=True
+                                     )))))
+
+            # TODO deal with identity transforms
+            #  (i.e. remove template -> template reg, replace with id, and ensure this registration is included?)
+            atlas_to_subject_registrations = (pd.merge(left=atlas_to_template_registrations.assign(fake=1),
+                                                       right=pd.DataFrame({ 'img' : imgs}).assign(fake=1),
+                                                       on="fake").drop("fake", axis=1)  # Cartesian product ......
+                                              .assign(label_file = lambda df: df.apply(axis=1, func=lambda row:
+                                                        s.defer(lsq12_nlin(
+                                                                   source=row.xfm_to_template.resampled,
+                                                                   target=row.img,
+                                                                   # the following fails since minctracc can't do
+                                                                   # a rigid registration starting from a nonlinear xfm;
+                                                                   # one fix would be to do all the affine and then
+                                                                   # all the nonlinear registrations
+                                                                   #source=row.atlas,
+                                                                   #initial_transform=row.xfm_to_template.xfm,
+                                                                   lsq12_conf=lsq12_conf,
+                                                                   resolution=resolution,
+                                                                   nlin_module=nlin_component,
+                                                                   nlin_options=options.maget.nlin.nlin_protocol,
+                                                                   resample_source=True)).resampled.labels
+                                                        if row.img.path != row.xfm_to_template.target.path
+                                                        else row.xfm_to_template.resampled.labels)))
+                                              #.assign(label_file = lambda df: df.apply(axis=1, func=lambda row:
+                                              #          s.defer(mincresample_new(img = row.atlas.labels,
+                                              #                                   xfm = row.xfm)))))
+
+            imgs_with_all_labels = atlas_to_subject_registrations[['img', 'label_file']]
+
+        elif maget_options.pairwise:
 
             # FIXME: the --max-templates flag is ambiguously named ... should be --max-new-templates
             # (and just use all atlases)
@@ -640,6 +699,9 @@ def _mk_maget_parser(parser : ArgParser):
                        action="store_false",
                        help="""If specified, only register inputs to atlases in library.""")
     parser.set_defaults(pairwise=True)
+    group.add_argument("--pseudopairwise", dest="pseudopairwise", action="store_true",
+                       help="Use intermediate templates to bootstrap registration distribution")
+    parser.set_defaults(pseudopairwise=False)
     group.add_argument("--mask", dest="mask",
                        action="store_true", default=True,
                        help="Create a mask for all images prior to handling labels. [Default = %(default)s]")

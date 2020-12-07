@@ -1611,6 +1611,8 @@ def lsq12_nlin(source: MincAtom,
                resolution: float,
                nlin_options,  # nlin_module.Conf,  ??  want an nlin_module.Conf here ...
                #nlin_conf: Union[MultilevelMinctraccConf, MultilevelANTSConf, ANTSConf],  # sigh ... ...
+               initial_transform = None,
+               transform_name_wo_ext = None,
                resample_source: bool = True):
     """
     Runs a 12 parameter (or really any) linear registration followed by a nonlinear registration
@@ -1658,7 +1660,7 @@ def lsq12_nlin(source: MincAtom,
         lsq12_transform_handler = s.defer(multilevel_minctracc(source=source,
                                                                target=target,
                                                                conf=lsq12_conf,
-                                                               # TODO allow a transform here?
+                                                               transform = initial_transform,
                                                                resample_source=resample_source))
         nlin_transform_handler = s.defer(nlin_module.register(source=s.defer(toMinc.from_mnc(source)),
                                                               target=s.defer(toMinc.from_mnc(target)),
@@ -1671,6 +1673,7 @@ def lsq12_nlin(source: MincAtom,
     else:
         lsq12_transform_handler = s.defer(multilevel_minctracc(source=source,
                                                                target=target,
+                                                               transform = initial_transform,
                                                                conf=lsq12_conf,
                                                                resample_source=True))
         nlin_transform_handler = s.defer(nlin_module.register(source=s.defer(toMinc.from_mnc(
